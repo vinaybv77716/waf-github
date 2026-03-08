@@ -1,0 +1,351 @@
+// =============================================================================
+// JENKINS PIPELINE — Dynamic WAF + ALB Management
+//
+// ACTIONS SUPPORTED (via WAF_ACTION parameter):
+//   create_waf          → Creates WAF Web ACL only (no association)
+//   delete_waf          → Destroys WAF Web ACL and removes all associations
+//   associate_waf       → Associates existing or newly created WAF with ALB(s)
+//   disassociate_waf    → Removes WAF association from ALB(s) (WAF remains)
+//   create_and_associate → Creates WAF AND associates it with ALB(s) in one step
+// =============================================================================
+
+pipeline {
+    agent any
+
+    parameters {
+        // ── Action ──────────────────────────────────────────────────────────
+        choice(
+            name: 'WAF_ACTION',
+            choices: [
+                'create_and_associate',
+                'create_waf',
+                'delete_waf',
+                'associate_waf',
+                'disassociate_waf'
+            ],
+            description: '''
+            What do you want to do?
+            • create_waf          — Create WAF only
+            • delete_waf          — Destroy WAF + remove all associations
+            • associate_waf       — Associate WAF with ALB(s)
+            • disassociate_waf    — Remove WAF from ALB(s) (WAF stays)
+            • create_and_associate — Create WAF + associate with ALB(s)
+            '''
+        )
+
+        // ── Environment ──────────────────────────────────────────────────────
+        choice(
+            name: 'ENVIRONMENT',
+            choices: ['dev', 'staging', 'prod'],
+            description: 'Target environment'
+        )
+
+        string(
+            name: 'AWS_REGION',
+            defaultValue: 'us-east-1',
+            description: 'AWS region'
+        )
+
+        // ── ALB Config ───────────────────────────────────────────────────────
+        text(
+            name: 'ALB_ARNS',
+            defaultValue: '',
+            description: '''
+            Comma-separated list of ALB ARNs to associate/disassociate.
+            Example:
+            arn:aws:elasticloadbalancing:us-east-1:123456789:loadbalancer/app/my-alb/abc
+            Leave empty if action does not involve ALB association.
+            '''
+        )
+
+        string(
+            name: 'EXISTING_WEB_ACL_ARN',
+            defaultValue: '',
+            description: '(Optional) ARN of an existing WAF Web ACL — used for associate_waf action only'
+        )
+
+        // ── WAF Rules ─────────────────────────────────────────────────────────
+        booleanParam(
+            name: 'ENABLE_AWS_MANAGED_RULES',
+            defaultValue: true,
+            description: 'Enable AWS Managed Core Rule Set'
+        )
+
+        booleanParam(
+            name: 'ENABLE_SQL_INJECTION_PROTECTION',
+            defaultValue: true,
+            description: 'Enable AWS Managed SQLi Rule Set'
+        )
+
+        booleanParam(
+            name: 'ENABLE_RATE_LIMITING',
+            defaultValue: false,
+            description: 'Enable rate-based limiting'
+        )
+
+        string(
+            name: 'RATE_LIMIT_THRESHOLD',
+            defaultValue: '2000',
+            description: 'Requests per 5-min window per IP before blocking (used when rate limiting enabled)'
+        )
+
+        choice(
+            name: 'DEFAULT_ACTION',
+            choices: ['allow', 'block'],
+            description: 'WAF default action for non-matched requests'
+        )
+
+        choice(
+            name: 'MANAGED_RULE_OVERRIDE',
+            choices: ['none', 'count'],
+            description: '"none" enforces rules | "count" monitors only (good for testing)'
+        )
+
+        // ── Terraform ─────────────────────────────────────────────────────────
+        booleanParam(
+            name: 'AUTO_APPROVE',
+            defaultValue: false,
+            description: 'Skip manual approval gate (use only for non-prod automation)'
+        )
+
+        string(
+            name: 'TF_STATE_BUCKET',
+            defaultValue: 'YOUR_TERRAFORM_STATE_BUCKET',
+            description: 'S3 bucket for Terraform remote state'
+        )
+    }
+
+    environment {
+        AWS_DEFAULT_REGION  = "${params.AWS_REGION}"
+        TF_IN_AUTOMATION    = 'true'
+        TF_CLI_ARGS         = '-no-color'
+        PROJECT_NAME        = 'myapp'
+    }
+
+    options {
+        timeout(time: 30, unit: 'MINUTES')
+        disableConcurrentBuilds()
+        timestamps()
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+    }
+
+    stages {
+
+        // ── 1. Validate inputs ──────────────────────────────────────────────
+        stage('Validate Parameters') {
+            steps {
+                script {
+                    echo "=== WAF Pipeline ==="
+                    echo "Action      : ${params.WAF_ACTION}"
+                    echo "Environment : ${params.ENVIRONMENT}"
+                    echo "Region      : ${params.AWS_REGION}"
+                    echo "ALB ARNs    : ${params.ALB_ARNS}"
+
+                    // Actions that require ALB ARNs
+                    def needsAlb = ['associate_waf', 'disassociate_waf', 'create_and_associate']
+                    if (params.WAF_ACTION in needsAlb && params.ALB_ARNS.trim() == '') {
+                        error("ALB_ARNS is required for action: ${params.WAF_ACTION}")
+                    }
+
+                    // associate_waf with no WAF source
+                    if (params.WAF_ACTION == 'associate_waf' &&
+                        params.EXISTING_WEB_ACL_ARN.trim() == '') {
+                        error("EXISTING_WEB_ACL_ARN is required for action: associate_waf")
+                    }
+                }
+            }
+        }
+
+        // ── 2. Checkout ─────────────────────────────────────────────────────
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        // ── 3. Build Terraform var flags dynamically ─────────────────────────
+        stage('Prepare Terraform Variables') {
+            steps {
+                script {
+                    // Parse ALB ARNs into a Terraform list string
+                    def albList = params.ALB_ARNS
+                        .split(',')
+                        .collect { it.trim() }
+                        .findAll { it != '' }
+                        .collect { "\"${it}\"" }
+                        .join(',')
+                    def albTfValue = "[${albList}]"
+
+                    // Resolve flags based on WAF_ACTION
+                    def createWaf    = false
+                    def associateWaf = false
+                    def destroyFlag  = ''
+
+                    switch(params.WAF_ACTION) {
+                        case 'create_waf':
+                            createWaf    = true
+                            associateWaf = false
+                            break
+                        case 'delete_waf':
+                            createWaf    = true   // state still has it → destroy removes it
+                            associateWaf = false
+                            destroyFlag  = '-destroy'
+                            break
+                        case 'associate_waf':
+                            createWaf    = false
+                            associateWaf = true
+                            break
+                        case 'disassociate_waf':
+                            createWaf    = params.EXISTING_WEB_ACL_ARN.trim() == '' ? true : false
+                            associateWaf = false
+                            break
+                        case 'create_and_associate':
+                            createWaf    = true
+                            associateWaf = true
+                            break
+                    }
+
+                    // Store for later stages
+                    env.TF_VAR_FLAGS = [
+                        "-var='project=${env.PROJECT_NAME}'",
+                        "-var='environment=${params.ENVIRONMENT}'",
+                        "-var='aws_region=${params.AWS_REGION}'",
+                        "-var='create_waf=${createWaf}'",
+                        "-var='associate_waf=${associateWaf}'",
+                        "-var='alb_arns=${albTfValue}'",
+                        "-var='existing_web_acl_arn=${params.EXISTING_WEB_ACL_ARN.trim()}'",
+                        "-var='default_action=${params.DEFAULT_ACTION}'",
+                        "-var='enable_aws_managed_rules=${params.ENABLE_AWS_MANAGED_RULES}'",
+                        "-var='managed_rule_override_action=${params.MANAGED_RULE_OVERRIDE}'",
+                        "-var='enable_sql_injection_protection=${params.ENABLE_SQL_INJECTION_PROTECTION}'",
+                        "-var='enable_rate_limiting=${params.ENABLE_RATE_LIMITING}'",
+                        "-var='rate_limit_threshold=${params.RATE_LIMIT_THRESHOLD}'"
+                    ].join(' ')
+
+                    env.DESTROY_FLAG       = destroyFlag
+                    env.CREATE_WAF_FLAG    = createWaf.toString()
+                    env.ASSOCIATE_WAF_FLAG = associateWaf.toString()
+
+                    echo "create_waf    = ${createWaf}"
+                    echo "associate_waf = ${associateWaf}"
+                    echo "destroy       = ${destroyFlag != ''}"
+                }
+            }
+        }
+
+        // ── 4. Terraform Init ────────────────────────────────────────────────
+        stage('Terraform Init') {
+            steps {
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding',
+                                  credentialsId: "aws-${params.ENVIRONMENT}"]]) {
+                    dir('waf-alb-project') {
+                        sh """
+                            terraform init \
+                                -backend-config="bucket=${params.TF_STATE_BUCKET}" \
+                                -backend-config="key=waf-alb/${params.ENVIRONMENT}/terraform.tfstate" \
+                                -backend-config="region=${params.AWS_REGION}" \
+                                -reconfigure
+                        """
+                    }
+                }
+            }
+        }
+
+        // ── 5. Terraform Plan ────────────────────────────────────────────────
+        stage('Terraform Plan') {
+            steps {
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding',
+                                  credentialsId: "aws-${params.ENVIRONMENT}"]]) {
+                    dir('waf-alb-project') {
+                        sh """
+                            terraform plan \
+                                ${env.DESTROY_FLAG} \
+                                ${env.TF_VAR_FLAGS} \
+                                -var-file="environments/${params.ENVIRONMENT}/terraform.tfvars" \
+                                -out=tfplan.binary
+
+                            terraform show -no-color tfplan.binary | tee tfplan.txt
+                        """
+                    }
+                }
+                // Archive plan for audit trail
+                archiveArtifacts artifacts: 'waf-alb-project/tfplan.txt', fingerprint: true
+            }
+        }
+
+        // ── 6. Manual Approval (skippable) ──────────────────────────────────
+        stage('Approval') {
+            when {
+                expression { return !params.AUTO_APPROVE }
+            }
+            steps {
+                script {
+                    def actionDesc = params.WAF_ACTION.replace('_', ' ').toUpperCase()
+                    input(
+                        message: "APPROVE ${actionDesc} in ${params.ENVIRONMENT.toUpperCase()}?",
+                        ok: 'Approve & Apply',
+                        submitter: 'admin,platform-team',
+                        parameters: [
+                            text(name: 'NOTES', defaultValue: '', description: 'Optional approval notes')
+                        ]
+                    )
+                }
+            }
+        }
+
+        // ── 7. Terraform Apply / Destroy ─────────────────────────────────────
+        stage('Terraform Apply') {
+            steps {
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding',
+                                  credentialsId: "aws-${params.ENVIRONMENT}"]]) {
+                    dir('waf-alb-project') {
+                        sh """
+                            terraform apply \
+                                ${env.DESTROY_FLAG} \
+                                -auto-approve \
+                                tfplan.binary
+                        """
+                    }
+                }
+            }
+        }
+
+        // ── 8. Capture Outputs ───────────────────────────────────────────────
+        stage('Capture Outputs') {
+            when {
+                expression { return params.WAF_ACTION != 'delete_waf' }
+            }
+            steps {
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding',
+                                  credentialsId: "aws-${params.ENVIRONMENT}"]]) {
+                    dir('waf-alb-project') {
+                        sh """
+                            echo "=== Terraform Outputs ==="
+                            terraform output -no-color | tee tf-outputs.txt
+                        """
+                    }
+                    archiveArtifacts artifacts: 'waf-alb-project/tf-outputs.txt', fingerprint: true
+                }
+            }
+        }
+    }
+
+    // ── Post actions ──────────────────────────────────────────────────────────
+    post {
+        success {
+            echo "✅ WAF action '${params.WAF_ACTION}' completed successfully for ${params.ENVIRONMENT}"
+        }
+        failure {
+            echo "❌ WAF action '${params.WAF_ACTION}' FAILED for ${params.ENVIRONMENT}"
+        }
+        always {
+            cleanWs(
+                cleanWhenSuccess: false,   // keep workspace on success for debugging
+                cleanWhenFailure: false,
+                cleanWhenAborted: true,
+                deleteDirs: true,
+                patterns: [[pattern: 'tfplan.binary', type: 'INCLUDE']]
+            )
+        }
+    }
+}
