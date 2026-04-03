@@ -343,7 +343,7 @@ Create a role (e.g. `TerraformWAFRole`) with this trust policy. The principal is
     {
       "Effect": "Allow",
       "Principal": {
-        "AWS": "arn:aws:iam::<SOURCE_ACCOUNT_ID>:role/ecr-ssm-role"
+        "AWS": "arn:aws:iam::892669526097:role/ecr-ssm-role"
       },
       "Action": "sts:AssumeRole"
     }
@@ -371,7 +371,7 @@ Attach these permissions to the `TerraformWAFRole` in the target account:
 }
 ```
 
-Also add an inline policy to `ecr-ssm-role` in the **source account** allowing it to assume the target role:
+Also add an inline policy to `ecr-ssm-role` in the **source account** (892669526097) allowing it to assume the target role:
 
 ```json
 {
@@ -380,7 +380,7 @@ Also add an inline policy to `ecr-ssm-role` in the **source account** allowing i
     {
       "Effect": "Allow",
       "Action": "sts:AssumeRole",
-      "Resource": "arn:aws:iam::<TARGET_ACCOUNT_ID>:role/TerraformWAFRole"
+      "Resource": "arn:aws:iam::307654412330:role/TerraformWAFRole"
     }
   ]
 }
@@ -390,11 +390,11 @@ Also add an inline policy to `ecr-ssm-role` in the **source account** allowing i
 
 ```hcl
 # Cross-account role in the target account
-assume_role_arn         = "arn:aws:iam::<TARGET_ACCOUNT_ID>:role/TerraformWAFRole"
+assume_role_arn         = "arn:aws:iam::307654412330:role/TerraformWAFRole"
 assume_role_external_id = ""   # not needed — ecr-ssm-role trust has no external ID condition
 
 # ALB in the target account
-alb_arns = ["arn:aws:elasticloadbalancing:us-east-1:<TARGET_ACCOUNT_ID>:loadbalancer/app/my-alb/abc123"]
+alb_arns = ["arn:aws:elasticloadbalancing:us-east-1:307654412330:loadbalancer/app/my-alb/abc123"]
 
 # Unique state key so it doesn't collide with other deployments
 key = "waf-alb/dev/myproject-crossaccount.tfstate"

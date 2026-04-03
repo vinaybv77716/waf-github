@@ -19,18 +19,18 @@
 #     {
 #       "Effect": "Allow",
 #       "Principal": {
-#         "AWS": "arn:aws:iam::<SOURCE_ACCOUNT_ID>:role/ecr-ssm-role"
+#         "AWS": "arn:aws:iam::892669526097:role/ecr-ssm-role"
 #       },
 #       "Action": "sts:AssumeRole"
 #     }
 #   ]
 # }
 #
-# Also ensure ecr-ssm-role in the SOURCE account has sts:AssumeRole permission:
+# Also ensure ecr-ssm-role in the SOURCE account (892669526097) has sts:AssumeRole permission:
 # {
 #   "Effect": "Allow",
 #   "Action": "sts:AssumeRole",
-#   "Resource": "arn:aws:iam::<TARGET_ACCOUNT_ID>:role/TerraformWAFRole"
+#   "Resource": "arn:aws:iam::307654412330:role/TerraformWAFRole"
 # }
 # =============================================================================
 
@@ -42,7 +42,7 @@ aws_region  = "us-east-1"
 # Cross-Account: IAM Role in the TARGET account to assume
 # Leave assume_role_arn empty ("") for same-account deployments
 # -----------------------------------------------------------------------------
-assume_role_arn         = "arn:aws:iam::<TARGET_ACCOUNT_ID>:role/TerraformWAFRole"
+assume_role_arn         = "arn:aws:iam::307654412330:role/TerraformWAFRole"
 assume_role_external_id = ""   # leave empty — ecr-ssm-role trust uses no external ID
 
 # -----------------------------------------------------------------------------
@@ -62,7 +62,7 @@ existing_web_acl_arn = ""
 # ALB Association — ALB lives in the TARGET account
 # -----------------------------------------------------------------------------
 associate_waf = true
-alb_arns      = ["arn:aws:elasticloadbalancing:us-east-1:<TARGET_ACCOUNT_ID>:loadbalancer/app/my-alb/abc123"]
+alb_arns      = ["arn:aws:elasticloadbalancing:us-east-1:307654412330:loadbalancer/app/my-alb/abc123"]
 
 default_action = "allow"
 
