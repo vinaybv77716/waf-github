@@ -3,6 +3,8 @@
 All rules are configured per environment via `.tfvars` files in `environments/dev/`.
 Each rule has an `enable_*` toggle, an `action` (`block` | `count` | `allow`), and a `priority`.
 
+State bucket: `vina-terraform-waf-bucket` | Jenkins account: `892669526097` | WAF target account: `307654412330`
+
 ---
 
 ## Rule Actions

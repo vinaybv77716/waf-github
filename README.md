@@ -1,8 +1,8 @@
 # AWS WAF + ALB Terraform Project
 
-A comprehensive Infrastructure as Code (IaC) solution for deploying and managing AWS Web Application Firewall (WAF) rules to protect Application Load Balancers (ALBs) from common web attacks.
+A comprehensive Infrastructure as Code (IaC) solution for deploying and managing AWS Web Application Firewall (WAF) rules to protect Application Load Balancers (ALBs) — including cross-account deployments.
 
-## 📋 Table of Contents
+## Table of Contents
 
 - [Project Overview](#project-overview)
 - [Key Features](#key-features)
@@ -12,140 +12,155 @@ A comprehensive Infrastructure as Code (IaC) solution for deploying and managing
 - [Quick Start Guide](#quick-start-guide)
 - [Configuration](#configuration)
 - [Deployment](#deployment)
+- [Creating a New WAF for a New Project](#creating-a-new-waf-for-a-new-project)
+- [Cross-Account WAF Deployment](#cross-account-waf-deployment)
 - [Jenkins Pipeline](#jenkins-pipeline)
 - [WAF Rules Reference](#waf-rules-reference)
 - [Troubleshooting](#troubleshooting)
 - [Security Best Practices](#security-best-practices)
-- [Cost Considerations](#cost-considerations)
-- [Contributing](#contributing)
 
 ---
 
-## 🎯 Project Overview
+## Project Overview
 
-This project provides a complete Terraform-based solution for securing AWS Application Load Balancers with Web Application Firewall rules. It automates the deployment of AWS Managed Rule Groups, custom IP allow/block lists, rate limiting, and logging configurations.
+This project provides a complete Terraform-based solution for securing AWS Application Load Balancers with Web Application Firewall rules. It automates the deployment of AWS Managed Rule Groups, custom IP allow/block lists, rate limiting, and logging configurations — and supports deploying WAF into a different AWS account than the one running Jenkins.
 
 ### What It Does
 
-- **🛡️ Deploys WAF Web ACLs** with multiple AWS managed rule sets
-- **🔗 Associates WAF rules** with Application Load Balancers
-- **📊 Provides monitoring** through CloudWatch metrics and optional logging
-- **🚀 Supports CI/CD** via Jenkins pipelines
-- **🔧 Enables customization** through environment-specific configurations
-
-### Simple Analogy
-
-Imagine your ALB is the front door to your house. The WAF is a smart security guard that:
-- Checks everyone entering (traffic inspection)
-- Blocks suspicious visitors (attackers)
-- Lets trusted people in without questions (IP allowlists)
-- Monitors and reports unusual activity (logging/metrics)
+- Deploys WAF Web ACLs with multiple AWS managed rule sets
+- Associates WAF rules with Application Load Balancers
+- Supports same-account and cross-account deployments via `sts:AssumeRole`
+- Provides monitoring through CloudWatch metrics and optional logging
+- Supports CI/CD via Jenkins pipelines
+- Enables customization through environment-specific `.tfvars` files
 
 ---
 
-## ✨ Key Features
+## Key Features
 
-- **Multi-Environment Support**: Dev, staging, and production configurations
-- **Comprehensive Rule Coverage**: 10+ AWS managed rule groups
-- **Flexible Actions**: Block, count, or allow per rule group
-- **Per-Rule Overrides**: Fine-tune individual sub-rules
-- **IP Management**: Allowlist and blocklist IP sets
-- **Rate Limiting**: DDoS protection with configurable thresholds
-- **Automated CI/CD**: Jenkins pipeline integration
-- **Plan Analysis**: Python script for readable Terraform plan output
-- **Cost Optimization**: WCU monitoring and rule enablement controls
+- Multi-Environment Support: Dev, staging, and production configurations
+- Cross-Account Deployment: Deploy WAF into any target account using IAM role assumption
+- Comprehensive Rule Coverage: 10+ AWS managed rule groups
+- Flexible Actions: Block, count, or allow per rule group
+- Per-Rule Overrides: Fine-tune individual sub-rules
+- IP Management: Allowlist and blocklist IP sets
+- Rate Limiting: DDoS protection with configurable thresholds
+- Automated CI/CD: Jenkins pipeline integration with `ROLE_ARN` parameter support
+- Plan Analysis: Python script for readable Terraform plan output
+- Cost Optimization: WCU monitoring and rule enablement controls
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
-security/
-├── Jenkinsfile                    # Main Jenkins CI/CD pipeline
-├── waf-rules.md                   # Detailed WAF rules reference
-├── waf-alb-project/              # Main Terraform project
-│   ├── main.tf                   # Root module - calls WAF module
-│   ├── variables.tf              # Root variable definitions
-│   ├── outputs.tf                # Root outputs
-│   ├── backend.tf                # S3 remote state configuration
-│   ├── jenkinsfile               # Alternative Jenkins pipeline
-│   ├── plan.py                   # Terraform plan analyzer script
-│   ├── environments/             # Environment-specific configs
+.
+├── Jenkinsfile                          # Main Jenkins CI/CD pipeline
+├── waf-rules.md                         # Detailed WAF rules reference
+├── waf-alb-project/
+│   ├── main.tf                          # Root module — provider + WAF module call
+│   ├── variables.tf                     # Root variable definitions (incl. cross-account)
+│   ├── outputs.tf                       # Root outputs
+│   ├── backend.tf                       # S3 remote state configuration
+│   ├── jenkinsfile                      # Alternative Jenkins pipeline
+│   ├── plan.py                          # Terraform plan analyzer script
+│   ├── environments/
 │   │   └── dev/
-│   │       ├── terraform.tfvars  # Dev environment variables
-│   │       └── new.tfvars        # Alternative dev config
+│   │       ├── terraform.tfvars         # biz2x dev configuration (same-account)
+│   │       ├── biz2credit.tfvars        # biz2credit dev configuration (same-account)
+│   │       ├── new.tfvars               # rapyder dev configuration (same-account)
+│   │       └── crossaccount.tfvars      # Cross-account deployment template
 │   └── modules/
-│       └── waf/                  # WAF Terraform module
-│           ├── main.tf           # WAF resource definitions
-│           ├── variables.tf      # Module variables
-│           └── outputs.tf        # Module outputs
+│       └── waf/
+│           ├── main.tf                  # WAF resource definitions
+│           ├── variables.tf             # Module variables
+│           └── outputs.tf              # Module outputs
 ```
 
 ### Key Components
 
 | Component | Purpose |
 |-----------|---------|
-| `Jenkinsfile` | CI/CD pipeline for automated deployment |
-| `waf-alb-project/` | Main Terraform codebase |
+| `Jenkinsfile` | CI/CD pipeline — supports `ROLE_ARN` for cross-account |
+| `main.tf` | AWS provider with dynamic `assume_role` block |
+| `variables.tf` | All variables including `assume_role_arn` and `assume_role_external_id` |
 | `modules/waf/` | Reusable WAF module |
-| `environments/` | Environment-specific configurations |
+| `environments/dev/` | Per-project tfvars files |
+| `crossaccount.tfvars` | Ready-to-use cross-account deployment template |
 | `plan.py` | Plan analysis and reporting tool |
 
 ---
 
-## 🛠️ Technologies Used
+## Technologies Used
 
-- **Infrastructure as Code**: Terraform 1.3+
-- **Cloud Platform**: Amazon Web Services (AWS)
+- Infrastructure as Code: Terraform 1.3+
+- Cloud Platform: Amazon Web Services (AWS)
   - WAFv2 (Web Application Firewall)
   - ALB (Application Load Balancer)
   - S3 (remote state storage)
+  - STS (cross-account role assumption)
   - CloudWatch (monitoring & logging)
-- **CI/CD**: Jenkins
-- **Scripting**: Python 3 (plan analysis)
-- **Version Control**: Git
+- CI/CD: Jenkins
+- Scripting: Python 3 (plan analysis)
+- Version Control: Git
 
 ---
 
-## 📋 Prerequisites
+## Prerequisites
 
 ### 1. AWS Account & Permissions
 
-You need an AWS account with these IAM permissions:
+The Jenkins EC2 instance runs with the `ecr-ssm-role` IAM instance profile in account `892669526097`. This role needs:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "wafv2:*",
+        "elasticloadbalancing:DescribeLoadBalancers",
+        "elasticloadbalancing:SetWebAcl",
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:ListBucket",
+        "sts:GetCallerIdentity"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+For cross-account deployments, also add:
 
 ```json
 {
   "Effect": "Allow",
-  "Action": [
-    "wafv2:*",
-    "elasticloadbalancing:DescribeLoadBalancers",
-    "s3:GetObject",
-    "s3:PutObject",
-    "s3:ListBucket",
-    "sts:GetCallerIdentity"
-  ],
-  "Resource": "*"
+  "Action": "sts:AssumeRole",
+  "Resource": "arn:aws:iam::307654412330:role/TerraformWAFRole"
 }
 ```
 
 ### 2. Required Tools
 
-- **Terraform**: v1.3.0 or higher
-- **AWS CLI**: Configured with credentials
-- **Python 3**: For plan analysis (optional)
-- **Jenkins**: For CI/CD (optional)
+- Terraform: v1.3.0 or higher
+- AWS CLI: Configured with credentials
+- Python 3: For plan analysis (optional)
+- Jenkins: For CI/CD (optional)
 
 ### 3. AWS Resources
 
-- **S3 Bucket**: For Terraform state storage
-- **Application Load Balancer**: Already created ALB to protect
-- **IAM User/Role**: With appropriate permissions
+- S3 Bucket: `vina-terraform-waf-bucket` (in account `892669526097`) for Terraform state
+- Application Load Balancer: Already created ALB to protect
+- IAM Role: `ecr-ssm-role` attached to Jenkins EC2
 
 ---
 
-## 🚀 Quick Start Guide
+## Quick Start Guide
 
-### Step 1: Clone and Navigate
+### Step 1: Navigate to the project
 
 ```bash
 cd waf-alb-project
@@ -153,46 +168,51 @@ cd waf-alb-project
 
 ### Step 2: Configure Environment
 
-Edit `environments/dev/terraform.tfvars`:
+Edit or copy an existing tfvars file under `environments/dev/`:
 
 ```hcl
 project     = "myproject"
 environment = "dev"
 aws_region  = "us-east-1"
 
-# S3 backend
-bucket = "my-terraform-state-bucket"
-key    = "waf-alb/terraform.tfstate"
+bucket = "vina-terraform-waf-bucket"
+key    = "waf-alb/dev/myproject.tfstate"
+region = "us-east-1"
 
-# WAF settings
 create_waf    = true
 associate_waf = true
-alb_arns      = ["arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/my-alb/1234567890123456"]
+alb_arns      = ["arn:aws:elasticloadbalancing:us-east-1:892669526097:loadbalancer/app/my-alb/abc123"]
 
-# Basic protection
+# Same-account — leave empty
+assume_role_arn         = ""
+assume_role_external_id = ""
+
 enable_aws_managed_rules = true
-aws_managed_rules_action = "count"  # Start with count for testing
+aws_managed_rules_action = "count"
 ```
 
 ### Step 3: Initialize Terraform
 
 ```bash
-terraform init
+terraform init \
+  -backend-config="bucket=vina-terraform-waf-bucket" \
+  -backend-config="key=waf-alb/dev/myproject.tfstate" \
+  -backend-config="region=us-east-1"
 ```
 
-### Step 4: Plan Changes
+### Step 4: Plan
 
 ```bash
-terraform plan -var-file="environments/dev/terraform.tfvars"
+terraform plan -var-file="environments/dev/myproject.tfvars" -out=tfplan.binary
 ```
 
-### Step 5: Apply Changes
+### Step 5: Apply
 
 ```bash
-terraform apply -var-file="environments/dev/terraform.tfvars"
+terraform apply tfplan.binary
 ```
 
-### Step 6: Verify Deployment
+### Step 6: Verify
 
 ```bash
 terraform output
@@ -201,140 +221,130 @@ aws wafv2 list-web-acls --scope REGIONAL --region us-east-1
 
 ---
 
-## ⚙️ Configuration
+## Configuration
 
-### Environment Variables
+### Root Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `TF_IN_AUTOMATION` | Enables Terraform automation mode | `true` |
-| `AWS_REGION` | AWS region for deployment | `us-east-1` |
-| `AWS_PROFILE` | AWS CLI profile (if using profiles) | - |
-
-### Key Configuration Files
-
-#### terraform.tfvars Structure
-
-```hcl
-# Project metadata
-project     = "myapp"
-environment = "dev"
-aws_region  = "us-east-1"
-
-# Backend configuration
-bucket = "my-state-bucket"
-key    = "waf-alb/dev/terraform.tfstate"
-
-# WAF lifecycle
-create_waf           = true
-existing_web_acl_arn = ""   # set when create_waf = false
-
-# ALB association
-associate_waf = true
-alb_arns      = ["arn:aws:elasticloadbalancing:us-east-1:123456789:loadbalancer/app/my-alb/abc123"]
-
-# Default action for requests that match no rule
-default_action = "allow"   # allow | block
-
-# IP lists
-allowlist_ips = ["203.0.113.0/24"]   # bypasses all WAF rules
-blocklist_ips = ["192.168.1.100/32"] # always blocked
-
-# Logging
-enable_waf_logging  = false
-log_destination_arn = ""   # CloudWatch Log Group or S3 ARN
-```
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `aws_region` | string | `us-east-1` | AWS region for deployment |
+| `assume_role_arn` | string | `""` | IAM role ARN to assume (cross-account). Empty = same-account |
+| `assume_role_external_id` | string | `""` | Optional external ID for the assume_role trust policy |
+| `project` | string | — | Project name, used in resource naming |
+| `environment` | string | — | `dev`, `staging`, or `prod` |
+| `create_waf` | bool | `true` | Whether to create a new WAF Web ACL |
+| `existing_web_acl_arn` | string | `""` | ARN of existing WAF (when `create_waf = false`) |
+| `associate_waf` | bool | `false` | Whether to associate WAF with ALBs |
+| `alb_arns` | list(string) | `[]` | ALB ARNs to associate |
+| `default_action` | string | `allow` | Default action for unmatched requests |
+| `enable_waf_logging` | bool | `false` | Enable WAF logging |
+| `log_destination_arn` | string | `""` | CloudWatch Log Group or S3 ARN for logs |
 
 ### Rule Action Types
 
 | Action | Behavior | Use Case |
 |--------|----------|----------|
-| `block` | Blocks matching requests | Production, trusted rules |
+| `block` | Blocks matching requests (HTTP 403) | Production |
 | `count` | Logs but allows requests | Testing, monitoring |
-| `allow` | Disables rule entirely | Rule not needed |
+| `allow` | Disables the rule entirely | Rule not needed |
+
+### tfvars Files
+
+| File | Project | Account | Notes |
+|------|---------|---------|-------|
+| `terraform.tfvars` | biz2x | 892669526097 | Same-account |
+| `biz2credit.tfvars` | biz2credit | 892669526097 | Same-account |
+| `new.tfvars` | rapyder | 892669526097 | Same-account |
+| `crossaccount.tfvars` | myproject | 307654412330 | Cross-account template |
 
 ---
 
-## 🚀 Deployment
+## Deployment
 
 ### Via Jenkins (Recommended)
 
-1. Open Jenkins → Select `simple-jenkinsfile` pipeline
-2. Click **"Build with Parameters"**
-3. Configure:
-   - `ENVIRONMENT`: dev/staging/prod
-   - `ACTION`: plan/apply/destroy
-   - `TF_STATE_BUCKET`: Your S3 bucket
+1. Open Jenkins and select the WAF pipeline
+2. Click **Build with Parameters**
+3. Set parameters:
+   - `ENVIRONMENT`: `dev` / `staging` / `prod`
+   - `ACTION`: `plan` / `apply` / `destroy`
+   - `TERRAFORM_VARIABLE_FILE`: e.g. `terraform.tfvars` or `crossaccount.tfvars`
+   - `ROLE_ARN`: leave empty for same-account; set to `arn:aws:iam::307654412330:role/TerraformWAFRole` for cross-account
+   - `EXTERNAL_ID`: leave empty (not used with `ecr-ssm-role` trust)
 4. Review plan output
 5. Approve and apply
 
+### Terraform Backend
+
+State is stored per project in S3:
+
+```
+Bucket: vina-terraform-waf-bucket
+Key:    waf-alb/{environment}/{tfvars-filename}.tfstate
+Region: us-east-1
+```
 
 ---
 
 ## Creating a New WAF for a New Project
 
-To deploy a separate WAF Web ACL for a new project, you only need to create a new `.tfvars` file — no Terraform code changes required.
+No Terraform code changes needed — just create a new `.tfvars` file.
 
 ### Step 1 — Create the tfvars file
 
-Copy an existing file as a starting point:
+Copy an existing file:
 
-```
-waf-alb-project/environments/dev/myproject.tfvars
+```bash
+cp environments/dev/terraform.tfvars environments/dev/myproject.tfvars
 ```
 
-Update the identity fields at the top:
+Update the identity fields:
 
 ```hcl
-project     = "myproject"       # used in resource names: myproject-dev-web-acl
+project     = "myproject"
 environment = "dev"
 aws_region  = "us-east-1"
 
 bucket = "vina-terraform-waf-bucket"
-key    = "waf-alb/dev/myproject.tfstate"   # unique state key per project
+key    = "waf-alb/dev/myproject.tfstate"   # unique per project
 region = "us-east-1"
 
-alb_arns = ["arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/my-alb/abc123"]
-```
+assume_role_arn         = ""   # same-account — leave empty
+assume_role_external_id = ""
 
-Enable or disable rules as needed — set `enable_* = false` for anything not required.
+alb_arns = ["arn:aws:elasticloadbalancing:us-east-1:892669526097:loadbalancer/app/my-alb/abc123"]
+```
 
 ### Step 2 — Run via Jenkins
 
-1. Open Jenkins and select the WAF pipeline
-2. Click **Build with Parameters**
-3. Set:
-   - `ACTION` = `plan`
-   - `TERRAFORM_VARIABLE_FILE` = `myproject.tfvars`
-4. Review the plan output
-5. Re-run with `ACTION` = `apply` to deploy
-
-The pipeline handles `terraform init` with the correct backend config automatically based on the `key` value in your tfvars.
+1. Set `TERRAFORM_VARIABLE_FILE` = `myproject.tfvars`
+2. Set `ACTION` = `plan`, review output
+3. Re-run with `ACTION` = `apply`
 
 ### Step 3 — Verify
 
-After apply, confirm in AWS Console:
-**WAF & Shield → Web ACLs → US East (N. Virginia)** — you should see `myproject-dev-web-acl`.
+In AWS Console: **WAF & Shield → Web ACLs → US East (N. Virginia)** — you should see `myproject-dev-web-acl`.
 
 ---
 
 ## Cross-Account WAF Deployment
 
-You can deploy WAF into a **different AWS account** without any code changes — just add two variables to your tfvars.
+Deploy WAF into account `307654412330` while Jenkins runs in account `892669526097`.
 
 ### How it works
 
-Terraform uses `sts:AssumeRole` to temporarily assume an IAM role in the target account. All WAF resources (Web ACL, IP sets, ALB associations) are created there. The Terraform state stays in the source account's S3 bucket.
-
 ```
-Source Account (Jenkins/Terraform)  ──sts:AssumeRole──▶  Target Account
-        │                                                       │
-   S3 state bucket                                    WAF Web ACL + ALB
+Account 892669526097 (Jenkins)          Account 307654412330 (WAF target)
+  ecr-ssm-role  ──sts:AssumeRole──▶    TerraformWAFRole
+       │                                      │
+  vina-terraform-waf-bucket (state)    WAF Web ACL + ALB association
 ```
 
-### Step 1 — Create the IAM role in the TARGET account
+Terraform's AWS provider uses a `dynamic assume_role` block — when `assume_role_arn` is set, it calls `sts:AssumeRole` before creating any resources. When empty, it uses the Jenkins instance credentials directly.
 
-Create a role (e.g. `TerraformWAFRole`) with this trust policy. The principal is `ecr-ssm-role` — the instance profile role attached to your Jenkins EC2 in the source account. Replace `<SOURCE_ACCOUNT_ID>` with the source account's ID:
+### Step 1 — Create TerraformWAFRole in account 307654412330
+
+Trust policy (allows `ecr-ssm-role` from account `892669526097` to assume it):
 
 ```json
 {
@@ -351,7 +361,7 @@ Create a role (e.g. `TerraformWAFRole`) with this trust policy. The principal is
 }
 ```
 
-Attach these permissions to the `TerraformWAFRole` in the target account:
+Permissions policy attached to `TerraformWAFRole`:
 
 ```json
 {
@@ -371,7 +381,7 @@ Attach these permissions to the `TerraformWAFRole` in the target account:
 }
 ```
 
-Also add an inline policy to `ecr-ssm-role` in the **source account** (892669526097) allowing it to assume the target role:
+### Step 2 — Add inline policy to ecr-ssm-role in account 892669526097
 
 ```json
 {
@@ -386,31 +396,131 @@ Also add an inline policy to `ecr-ssm-role` in the **source account** (892669526
 }
 ```
 
-### Step 2 — Add cross-account variables to your tfvars
+### Step 3 — Use crossaccount.tfvars
+
+The file `environments/dev/crossaccount.tfvars` is pre-configured with the correct ARNs:
 
 ```hcl
-# Cross-account role in the target account
 assume_role_arn         = "arn:aws:iam::307654412330:role/TerraformWAFRole"
-assume_role_external_id = ""   # not needed — ecr-ssm-role trust has no external ID condition
+assume_role_external_id = ""
 
-# ALB in the target account
 alb_arns = ["arn:aws:elasticloadbalancing:us-east-1:307654412330:loadbalancer/app/my-alb/abc123"]
 
-# Unique state key so it doesn't collide with other deployments
-key = "waf-alb/dev/myproject-crossaccount.tfstate"
+bucket = "vina-terraform-waf-bucket"
+key    = "waf-alb/dev/myproject-crossaccount.tfstate"
 ```
 
-A ready-to-use template is at `environments/dev/crossaccount.tfvars`.
+Update `alb_arns` with the real ALB ARN in account `307654412330`.
 
-### Step 3 — Deploy via Jenkins
+### Step 4 — Deploy via Jenkins
 
-Set `TERRAFORM_VARIABLE_FILE` = `crossaccount.tfvars` (or your custom file name) and run as normal. The `ROLE_ARN` and `EXTERNAL_ID` Jenkins parameters can also override the values at runtime without editing the tfvars file.
+Set `TERRAFORM_VARIABLE_FILE` = `crossaccount.tfvars` and run as normal. Leave `ROLE_ARN` and `EXTERNAL_ID` Jenkins parameters empty — the values come from the tfvars file.
 
-### Same-account deployments
+### Important: Do NOT pass assume_role_arn for same-account runs
 
-Leave `assume_role_arn = ""` (the default) and Terraform uses the credentials of the Jenkins agent directly — no change in behavior from before.
+The error `IAM Role cannot be assumed` occurs when `assume_role_arn` is set to a role in the same account as the caller. For same-account deployments (`terraform.tfvars`, `biz2credit.tfvars`, `new.tfvars`), always leave `assume_role_arn = ""`.
 
 ---
+
+## Jenkins Pipeline
+
+### Pipeline Stages
+
+```
+Validate Parameters → Terraform Init → Terraform Plan → Approval → Terraform Apply → Outputs
+```
+
+- Approval gate is skipped when `ACTION = plan`
+- Plan output is archived as a Jenkins artifact
+- `plan.py` generates a readable summary table after each plan
+
+### Pipeline Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `ENVIRONMENT` | `dev` | Target environment (`dev` / `staging` / `prod`) |
+| `ACTION` | `plan` | Operation (`plan` / `apply` / `destroy`) |
+| `TF_STATE_BUCKET` | `vina-terraform-waf-bucket` | S3 bucket for Terraform state |
+| `AWS_REGION` | `us-east-1` | AWS region |
+| `TERRAFORM_VARIABLE_FILE` | `terraform.tfvars` | tfvars filename under `environments/{env}/` |
+| `ROLE_ARN` | _(empty)_ | Cross-account role ARN to assume. Leave empty for same-account |
+| `EXTERNAL_ID` | _(empty)_ | External ID for assume_role. Leave empty when using `ecr-ssm-role` |
+
+### Actions
+
+| Action | What it does |
+|--------|-------------|
+| `plan` | Shows what Terraform will change — no changes applied |
+| `apply` | Applies the plan — creates or updates WAF |
+| `destroy` | Destroys all WAF resources for the environment |
+
+---
+
+## WAF Rules Reference
+
+For full WAF rule and sub-rule definitions, see [waf-rules.md](./waf-rules.md).
+
+### Rule Groups Summary
+
+| # | Rule Group | Variable Prefix | WCU | Priority |
+|---|-----------|----------------|-----|----------|
+| 1 | Core Rule Set (OWASP Top 10) | `aws_managed_rules` | 700 | 9 |
+| 2 | Known Bad Inputs (Log4Shell, CVEs) | `known_bad_inputs` | 200 | 15 |
+| 3 | SQL Injection | `sql_injection_protection` | 200 | 20 |
+| 4 | IP Reputation List | `ip_reputation` | 25 | 25 |
+| 5 | Anonymous IP (VPN/Tor/Proxy) | `anonymous_ip` | 50 | 35 |
+| 6 | Bot Control | `bot_control` | 50 | 36 |
+| 7 | Anti-DDoS | `anti_ddos` | — | 37 |
+| 8 | Linux Protection | `linux_protection` | 200 | 50 |
+| 9 | Unix Protection | `unix_protection` | 100 | 55 |
+| 10 | Windows Protection | `windows_protection` | 200 | 60 |
+| 11 | PHP Protection | `php_protection` | 100 | 65 |
+| 12 | WordPress Protection | `wordpress_protection` | 100 | 70 |
+| — | Rate Limiting | `rate_limiting` | 2 | 40 |
+
+### Priority Order (full)
+
+| Priority | Rule |
+|----------|------|
+| 3 | Allow-URLS |
+| 5 | Allow-IPs |
+| 9 | Core Rule Set |
+| 15 | Known Bad Inputs |
+| 20 | SQL Injection |
+| 25 | IP Reputation |
+| 30 | Block-IP |
+| 35 | Anonymous IP |
+| 36 | Bot Control |
+| 37 | Anti-DDoS |
+| 40 | RateLimit |
+| 50 | Linux Protection |
+| 55 | Unix Protection |
+| 60 | Windows Protection |
+| 65 | PHP Protection |
+| 70 | WordPress Protection |
+| 75 | Restrict-Admin |
+| 76 | block-git-access |
+| 77 | BlockSpecificURL |
+| 78 | BlockExtensions-UriPath |
+| 80 | Block-African-Countries-1 |
+| 801 | Block-African-Countries-2 |
+| 81 | Block-SouthAmerica-Countries |
+| 82 | BlockSelectedCountries1 |
+| 83 | BlockSelectedCountries2 |
+| 84 | AllowCountryUS |
+
+### WCU Budget
+
+Hard limit: 1,500 WCU per Web ACL.
+
+Core + SQLi + Known Bad + IP Reputation + Rate Limit = **1,127 WCU**
+Adding Linux = **1,327 WCU** — still within limit.
+
+### Environment Progression
+
+```
+dev (count) → staging (block critical rules) → prod (all block)
+```
 
 ### Rules to enable per use case
 
@@ -424,151 +534,27 @@ Leave `assume_role_arn = ""` (the default) and Terraform uses the credentials of
 
 ---
 
-The project includes a comprehensive Jenkins pipeline with these stages:
+## Troubleshooting
+
+### Cannot assume IAM Role (cross-account)
 
 ```
-Validate Parameters → Terraform Init → Terraform Plan → Review Plan → Approval → Terraform Apply → Outputs
+Error: IAM Role (arn:aws:iam::...) cannot be assumed
+AccessDenied: not authorized to perform: sts:AssumeRole
 ```
 
-- Approval gate is skipped when `AUTO_APPROVE = true` or `ACTION = plan`
-- Plan output is archived as a Jenkins artifact
+Causes and fixes:
+- Passing `assume_role_arn` pointing to the same account as the caller — a role cannot assume itself. For same-account runs, set `assume_role_arn = ""`.
+- `ecr-ssm-role` in account `892669526097` is missing the `sts:AssumeRole` inline policy for the target role.
+- `TerraformWAFRole` in account `307654412330` trust policy does not list `ecr-ssm-role` as a principal.
 
-### Pipeline Parameters
-
-| Parameter | Options | Description |
-|-----------|---------|-------------|
-| `ENVIRONMENT` | dev/staging/prod | Target environment |
-| `ACTION` | plan/apply/destroy | Operation to perform |
-| `TF_STATE_BUCKET` | string | S3 bucket for state |
-| `AWS_REGION` | string | AWS region |
-| `TERRAFORM_VARIABLE_FILE` | string | .tfvars filename |
-
-### Actions
-
-| Action | What it does |
-|--------|-------------|
-| `plan` | Shows what Terraform will change — no changes applied |
-| `apply` | Applies the plan — creates or updates WAF |
-| `destroy` | Destroys all WAF resources for the environment |
-
-### Terraform Backend
-
-State is stored per environment in S3:
-
-```
-Bucket: vina-terraform-waf-bucket
-Key:    waf-alb/{environment}/terraform.tfstate
-Region: us-east-1
-```
-
-The pipeline handles `-backend-config` automatically based on the `ENVIRONMENT` parameter.
-
-### Plan Analysis
-
-The pipeline uses `plan.py` to generate readable plan summaries:
-
+Verify the caller identity first:
 ```bash
-python3 plan.py plan.json
+aws sts get-caller-identity
 ```
 
-This produces ASCII tables showing:
-- ALB associations
-- WAF rule changes
-- Sub-rule modifications
-- Change summaries
+### WCU Limit Exceeded
 
----
-
-## 📚 WAF Rules Reference
-
-For full WAF rule and sub-rule definitions, see [waf-rules.md](./waf-rules.md).
-
-### Rule Groups Summary
-
-| # | Rule Group | Variable Prefix | WCU | Priority |
-|---|-----------|----------------|-----|----------|
-| 1 | Core Rule Set (OWASP Top 10) | `aws_managed_rules` | 700 | 10 |
-| 2 | Known Bad Inputs (Log4Shell, CVEs) | `known_bad_inputs` | 200 | 15 |
-| 3 | SQL Injection | `sql_injection_protection` | 200 | 20 |
-| 4 | IP Reputation List | `ip_reputation` | 25 | 25 |
-| 5 | Anonymous IP (VPN/Tor/Proxy) | `anonymous_ip` | 50 | 35 |
-| 6 | Linux Protection | `linux_protection` | 200 | 50 |
-| 7 | Unix Protection | `unix_protection` | 100 | 55 |
-| 8 | Windows Protection | `windows_protection` | 200 | 60 |
-| 9 | PHP Protection | `php_protection` | 100 | 65 |
-| 10 | WordPress Protection | `wordpress_protection` | 100 | 70 |
-| — | Rate Limiting | `rate_limiting` | 2 | 40 |
-
-### Rule Priorities
-
-Rules are evaluated in priority order (lower numbers first):
-- 5: IP Allowlist
-- 10: Core Rules
-- 15: Known Bad Inputs
-- 20: SQL Injection
-- 25: IP Reputation
-- 30: IP Blocklist
-- 40: Rate Limiting
-
-### WCU Budget
-
-**Hard limit: 1,500 WCU per Web ACL.**
-
-Current dev configuration: ~1,327 WCU used.
-
-### Dev Environment (Current)
-
-| Rule | Enabled | Action | WCU |
-|------|---------|--------|-----|
-| Core Rule Set | yes | count | 700 |
-| Known Bad Inputs | yes | count | 200 |
-| SQL Injection | yes | count | 200 |
-| IP Reputation | yes | count | 25 |
-| Linux Protection | yes | count | 200 |
-| Rate Limiting | yes | count | 2 |
-| All others | no | — | 0 |
-| **Total** | | | **1,327** |
-
-### Per-Sub-Rule Overrides
-
-Fine-tune individual rules regardless of the group-level action:
-
-```hcl
-aws_managed_rules_action = "count"
-
-aws_managed_rules_rule_action_overrides = [
-  { name = "NoUserAgent_HEADER", action = "block" },
-  { name = "CrossSiteScripting_BODY", action = "allow" },
-]
-```
-
-See `waf-rules.md` for the full list of sub-rules per group.
-
-### Environment Progression
-
-```
-dev (count) → staging (block critical rules) → prod (all block)
-```
-
-1. Deploy dev — all rules in `count` mode
-2. Monitor CloudWatch for 24–48 hours, identify false positives
-3. Add sub-rule overrides for any false positives
-4. Promote to staging — set `block` for Core, SQLi, Known Bad Inputs, IP Reputation
-5. Validate with staging traffic
-6. Deploy prod — all rules in `block` mode
-
----
-
-## 🔧 Troubleshooting
-
-### Common Issues
-
-#### "Access Denied" Errors
-- Verify AWS credentials: `aws sts get-caller-identity`
-- Check IAM permissions
-- Confirm S3 bucket access
-
-#### WCU Limit Exceeded
 Error: `web_acl_capacity` over 1,500. Disable unused rules:
 ```hcl
 enable_windows_protection   = false   # saves 200 WCU
@@ -579,25 +565,31 @@ enable_wordpress_protection = false   # saves 100 WCU
 enable_anonymous_ip         = false   # saves 50 WCU
 ```
 
-#### WAF Not Protecting ALB
+### WAF Not Protecting ALB
+
 - Verify `associate_waf = true`
-- Check ALB ARN correctness
-- Ensure same AWS region
-- Wait 5-10 minutes post-deployment
-- Make sure you are in the correct region in the AWS Console: **WAF & Shield → Web ACLs → US East (N. Virginia)**
+- Check ALB ARN is correct and in the same region
+- For cross-account: ensure the ALB ARN uses account `307654412330`
+- Wait 5–10 minutes post-deployment
+- Check region in AWS Console: **WAF & Shield → Web ACLs → US East (N. Virginia)**
 
-#### Terraform State Issues
-- State locked: `terraform force-unlock LOCK_ID`
-- Stale state (WAF deleted manually in AWS): run `ACTION = sync-state` in Jenkins, then apply again, or via terminal:
+### Terraform State Issues
 
+State locked:
+```bash
+terraform force-unlock LOCK_ID
+```
+
+Stale state (WAF deleted manually):
 ```bash
 terraform state rm 'module.waf.aws_wafv2_web_acl.this[0]'
 terraform plan -var-file="environments/dev/terraform.tfvars" -out=tfplan.binary
 terraform apply -auto-approve tfplan.binary
 ```
 
-#### S3 Backend 403 Forbidden
-The state key path is wrong. Re-init with the correct key:
+### S3 Backend 403 Forbidden
+
+Re-init with the correct key:
 ```bash
 terraform init \
   -backend-config="bucket=vina-terraform-waf-bucket" \
@@ -606,7 +598,8 @@ terraform init \
   -reconfigure
 ```
 
-#### Tag Value Error
+### Tag Value Error
+
 AWS WAF does not allow commas in tag values. Use `+` as separator:
 ```hcl
 # Wrong
@@ -616,8 +609,8 @@ Dependencies = "alb,s3,cloudwatch"
 Dependencies = "alb+s3+cloudwatch"
 ```
 
-#### HCL Syntax Error — Missing Attribute Separator
-Object attributes in `.tfvars` must be comma-separated:
+### HCL Syntax Error — Missing Attribute Separator
+
 ```hcl
 # Wrong
 { name = "SomeRule_BODY" action = "allow" }
@@ -635,7 +628,7 @@ aws wafv2 list-web-acls --scope REGIONAL --region us-east-1
 # View WAF details
 aws wafv2 get-web-acl \
   --scope REGIONAL \
-  --name myapp-dev-web-acl \
+  --name myproject-dev-web-acl \
   --id <web-acl-id> \
   --region us-east-1
 
@@ -644,38 +637,34 @@ aws wafv2 list-resources-for-web-acl \
   --web-acl-arn <web-acl-arn> \
   --region us-east-1
 
-# View sampled requests (last 1 hour)
-aws wafv2 get-sampled-requests \
-  --web-acl-arn <web-acl-arn> \
-  --rule-metric-name myapp-dev-sqli-rules \
-  --scope REGIONAL \
-  --time-window StartTime=$(date -u -d '1 hour ago' +%s),EndTime=$(date -u +%s) \
-  --max-items 100 \
-  --region us-east-1
+# Verify cross-account role assumption
+aws sts assume-role \
+  --role-arn arn:aws:iam::307654412330:role/TerraformWAFRole \
+  --role-session-name test-session
 ```
 
+---
 
-## 🔒 Security Best Practices
+## Security Best Practices
 
-1. **Start with Monitoring**: Use "count" action initially
-2. **Test Thoroughly**: Validate application behavior
-3. **Enable Logging**: Monitor for false positives
-4. **Use Allowlists**: Whitelist known good IPs
-5. **Regular Reviews**: Audit rules and logs monthly
-6. **Least Privilege**: Grant minimal required permissions
-7. **Backup State**: Enable S3 versioning
-8. **Monitor Costs**: Set WCU usage alerts
+1. Start with `count` mode — monitor before switching to `block`
+2. Never set `assume_role_arn` to a role in the same account as the caller
+3. Use least-privilege permissions on `TerraformWAFRole` — only `wafv2:*` and `elb:SetWebAcl`
+4. Enable S3 versioning on `vina-terraform-waf-bucket` for state file protection
+5. Enable WAF logging in production — set `enable_waf_logging = true`
+6. Review CloudWatch WAF metrics regularly for false positives
+7. Use IP allowlists for known trusted CIDRs to avoid blocking legitimate traffic
 
 ### Production Checklist
 
-- [ ] All rules in "block" mode
-- [ ] Logging enabled
-- [ ] CloudWatch alarms configured
-- [ ] IP allowlists populated
-- [ ] Rate limiting tuned
-- [ ] Manual testing completed
+- [ ] All rules in `block` mode
+- [ ] `enable_waf_logging = true` with valid `log_destination_arn`
+- [ ] CloudWatch alarms configured on WAF metrics
+- [ ] IP allowlists populated with trusted CIDRs
+- [ ] Rate limiting threshold tuned for expected traffic
+- [ ] Cross-account role permissions reviewed and scoped
 - [ ] Rollback plan documented
 
 ---
 
-*This project follows Infrastructure as Code best practices and AWS security guidelines. Always test changes in development before production deployment.*
+*State bucket: `vina-terraform-waf-bucket` | Jenkins account: `892669526097` | WAF target account: `307654412330`*
