@@ -8,6 +8,22 @@ variable "aws_region" {
   default     = "us-east-1"
 }
 
+# -----------------------------------------------------------------------------
+# Cross-Account Support
+# -----------------------------------------------------------------------------
+
+variable "assume_role_arn" {
+  description = "IAM Role ARN to assume for cross-account deployment. Leave empty for same-account deployments."
+  type        = string
+  default     = ""
+}
+
+variable "assume_role_external_id" {
+  description = "Optional external ID for the assume_role trust policy (adds extra security for cross-account)"
+  type        = string
+  default     = ""
+}
+
 
 variable "bucket" {
   description = "S3 bucket to store Terraform state"

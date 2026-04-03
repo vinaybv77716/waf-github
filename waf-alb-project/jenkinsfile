@@ -8,6 +8,8 @@ pipeline {
         string(name: 'TF_STATE_BUCKET', defaultValue: 'bizx2-rapyder-jenkins-waf-2026')
         string(name: 'AWS_REGION', defaultValue: 'us-east-1')
         string(name: 'TERRAFORM_VARIABLE_FILE', defaultValue: 'terraform.tfvars')
+        string(name: 'ROLE_ARN', defaultValue: '', description: 'IAM Role ARN to assume for cross-account deployment (leave empty for same-account)')
+        string(name: 'EXTERNAL_ID', defaultValue: '', description: 'Optional external ID for the assume_role trust policy')
     }
 
     environment {
@@ -59,11 +61,15 @@ pipeline {
                 dir(env.WORKSPACE_DIR) {
                     script {
                         def destroyFlag = params.ACTION == 'destroy' ? '-destroy' : ''
+                        def roleArnVar = params.ROLE_ARN ? "-var='assume_role_arn=${params.ROLE_ARN}'" : ""
+                        def externalIdVar = params.EXTERNAL_ID ? "-var='assume_role_external_id=${params.EXTERNAL_ID}'" : ""
 
                         sh """
                         terraform plan \
                           ${destroyFlag} \
                           -var-file="environments/${params.ENVIRONMENT}/${params.TERRAFORM_VARIABLE_FILE}" \
+                          ${roleArnVar} \
+                          ${externalIdVar} \
                           -out=tfplan.binary
                         """
 

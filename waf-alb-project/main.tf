@@ -16,6 +16,16 @@ terraform {
 provider "aws" {
   region = var.aws_region
 
+  # Cross-account: assume a role in the target account when provided
+  dynamic "assume_role" {
+    for_each = var.assume_role_arn != "" ? [1] : []
+    content {
+      role_arn     = var.assume_role_arn
+      session_name = "terraform-waf-${var.project}-${var.environment}"
+      external_id  = var.assume_role_external_id != "" ? var.assume_role_external_id : null
+    }
+  }
+
   default_tags {
     tags = var.tags
   }

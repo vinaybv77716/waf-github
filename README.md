@@ -316,6 +316,102 @@ The pipeline handles `terraform init` with the correct backend config automatica
 After apply, confirm in AWS Console:
 **WAF & Shield → Web ACLs → US East (N. Virginia)** — you should see `myproject-dev-web-acl`.
 
+---
+
+## Cross-Account WAF Deployment
+
+You can deploy WAF into a **different AWS account** without any code changes — just add two variables to your tfvars.
+
+### How it works
+
+Terraform uses `sts:AssumeRole` to temporarily assume an IAM role in the target account. All WAF resources (Web ACL, IP sets, ALB associations) are created there. The Terraform state stays in the source account's S3 bucket.
+
+```
+Source Account (Jenkins/Terraform)  ──sts:AssumeRole──▶  Target Account
+        │                                                       │
+   S3 state bucket                                    WAF Web ACL + ALB
+```
+
+### Step 1 — Create the IAM role in the TARGET account
+
+Create a role (e.g. `TerraformWAFRole`) with this trust policy. The principal is `ecr-ssm-role` — the instance profile role attached to your Jenkins EC2 in the source account. Replace `<SOURCE_ACCOUNT_ID>` with the source account's ID:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::<SOURCE_ACCOUNT_ID>:role/ecr-ssm-role"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+```
+
+Attach these permissions to the `TerraformWAFRole` in the target account:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "wafv2:*",
+        "elasticloadbalancing:DescribeLoadBalancers",
+        "elasticloadbalancing:SetWebAcl",
+        "sts:GetCallerIdentity"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+Also add an inline policy to `ecr-ssm-role` in the **source account** allowing it to assume the target role:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "sts:AssumeRole",
+      "Resource": "arn:aws:iam::<TARGET_ACCOUNT_ID>:role/TerraformWAFRole"
+    }
+  ]
+}
+```
+
+### Step 2 — Add cross-account variables to your tfvars
+
+```hcl
+# Cross-account role in the target account
+assume_role_arn         = "arn:aws:iam::<TARGET_ACCOUNT_ID>:role/TerraformWAFRole"
+assume_role_external_id = ""   # not needed — ecr-ssm-role trust has no external ID condition
+
+# ALB in the target account
+alb_arns = ["arn:aws:elasticloadbalancing:us-east-1:<TARGET_ACCOUNT_ID>:loadbalancer/app/my-alb/abc123"]
+
+# Unique state key so it doesn't collide with other deployments
+key = "waf-alb/dev/myproject-crossaccount.tfstate"
+```
+
+A ready-to-use template is at `environments/dev/crossaccount.tfvars`.
+
+### Step 3 — Deploy via Jenkins
+
+Set `TERRAFORM_VARIABLE_FILE` = `crossaccount.tfvars` (or your custom file name) and run as normal. The `ROLE_ARN` and `EXTERNAL_ID` Jenkins parameters can also override the values at runtime without editing the tfvars file.
+
+### Same-account deployments
+
+Leave `assume_role_arn = ""` (the default) and Terraform uses the credentials of the Jenkins agent directly — no change in behavior from before.
+
+---
+
 ### Rules to enable per use case
 
 | Use case | Recommended rules |
