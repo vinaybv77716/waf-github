@@ -5,10 +5,8 @@
 
 terraform {
   backend "s3" {
-    bucket         = "elasticbeanstalk-us-east-1-307654412330"
-    key            = "waf-alb/terraform.tfstate"
+    bucket         = "bizx2-rapyder-jenkins-waf-2026"
+    key            = "wafalb/"
     region         = "us-east-1"
-   # dynamodb_table = "terraform-state-lock"
-    #encrypt        = true
   }
 }

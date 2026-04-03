@@ -15,10 +15,6 @@ override.tf.json
 *_override.tf
 *_override.tf.json
 
-# Configuration files (users create their own)
-terraform.tfvars
-*.auto.tfvars
-
 # Sensitive files
 *.pem
 *.key

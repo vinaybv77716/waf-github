@@ -19,7 +19,7 @@ output "web_acl_name" {
 
 output "web_acl_capacity" {
   description = "Web ACL capacity units consumed (null if create_waf = false)"
-  value       = var.create_waf ? aws_wafv2_web_acl.this[0].capacity : null
+  value       = var.create_waf ? floor(aws_wafv2_web_acl.this[0].capacity) : null
 }
 
 output "associated_alb_arns" {
