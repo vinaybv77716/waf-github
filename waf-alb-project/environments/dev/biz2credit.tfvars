@@ -16,6 +16,10 @@ bucket = "vina-terraform-waf-bucket"
 key    = "waf-alb/terraform.tfstate"
 region = "us-east-1"
 
+# Same-account — leave empty
+assume_role_arn         = ""
+assume_role_external_id = ""
+
 # WAF Lifecycle
 create_waf           = true
 existing_web_acl_arn = ""
