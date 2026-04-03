@@ -8,7 +8,7 @@ pipeline {
         string(name: 'TF_STATE_BUCKET', defaultValue: 'vina-terraform-waf-bucket')
         string(name: 'AWS_REGION', defaultValue: 'us-east-1')
         string(name: 'TERRAFORM_VARIABLE_FILE', defaultValue: 'terraform.tfvars')
-        string(name: 'ROLE_ARN', defaultValue: '', description: 'IAM Role ARN to assume for cross-account deployment (leave empty for same-account)')
+        string(name: 'ROLE_ARN', defaultValue: 'arn:aws:iam::307654412330:role/CrossAccount-WAF-Role', description: 'IAM Role ARN to assume for cross-account deployment (leave empty for same-account)')
         string(name: 'EXTERNAL_ID', defaultValue: '', description: 'Optional external ID for the assume_role trust policy')
     }
 
