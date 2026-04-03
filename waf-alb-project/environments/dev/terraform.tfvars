@@ -7,7 +7,7 @@ environment = "dev"
 aws_region  = "us-east-1"
 
 # Backend
-bucket = "bizx2-rapyder-jenkins-waf-2026"
+bucket = "vina-terraform-waf-bucket"
 key    = "waf-alb/terraform.tfstate"
 region = "us-east-1"
 

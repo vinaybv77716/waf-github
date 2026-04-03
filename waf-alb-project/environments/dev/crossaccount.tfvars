@@ -48,7 +48,7 @@ assume_role_external_id = ""   # leave empty — ecr-ssm-role trust uses no exte
 # -----------------------------------------------------------------------------
 # Backend — state is stored in the SOURCE account's S3 bucket
 # -----------------------------------------------------------------------------
-bucket = "bizx2-rapyder-jenkins-waf-2026"
+bucket = "vina-terraform-waf-bucket"
 key    = "waf-alb/dev/myproject-crossaccount.tfstate"
 region = "us-east-1"
 

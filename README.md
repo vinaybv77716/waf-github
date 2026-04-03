@@ -290,7 +290,7 @@ project     = "myproject"       # used in resource names: myproject-dev-web-acl
 environment = "dev"
 aws_region  = "us-east-1"
 
-bucket = "bizx2-rapyder-jenkins-waf-2026"
+bucket = "vina-terraform-waf-bucket"
 key    = "waf-alb/dev/myproject.tfstate"   # unique state key per project
 region = "us-east-1"
 
@@ -456,7 +456,7 @@ Validate Parameters → Terraform Init → Terraform Plan → Review Plan → Ap
 State is stored per environment in S3:
 
 ```
-Bucket: bizx2-rapyder-jenkins-waf-2026
+Bucket: vina-terraform-waf-bucket
 Key:    waf-alb/{environment}/terraform.tfstate
 Region: us-east-1
 ```
@@ -600,7 +600,7 @@ terraform apply -auto-approve tfplan.binary
 The state key path is wrong. Re-init with the correct key:
 ```bash
 terraform init \
-  -backend-config="bucket=bizx2-rapyder-jenkins-waf-2026" \
+  -backend-config="bucket=vina-terraform-waf-bucket" \
   -backend-config="key=waf-alb/dev/terraform.tfstate" \
   -backend-config="region=us-east-1" \
   -reconfigure

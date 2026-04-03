@@ -5,7 +5,7 @@ pipeline {
         choice(name: 'ENVIRONMENT', choices: ['dev', 'staging', 'prod'])
         choice(name: 'ACTION', choices: ['plan', 'apply', 'destroy'])
 
-        string(name: 'TF_STATE_BUCKET', defaultValue: 'bizx2-rapyder-jenkins-waf-2026')
+        string(name: 'TF_STATE_BUCKET', defaultValue: 'vina-terraform-waf-bucket')
         string(name: 'AWS_REGION', defaultValue: 'us-east-1')
         string(name: 'TERRAFORM_VARIABLE_FILE', defaultValue: 'terraform.tfvars')
         string(name: 'ROLE_ARN', defaultValue: '', description: 'IAM Role ARN to assume for cross-account deployment (leave empty for same-account)')

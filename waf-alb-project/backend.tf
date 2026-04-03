@@ -5,7 +5,7 @@
 
 terraform {
   backend "s3" {
-    bucket         = "bizx2-rapyder-jenkins-waf-2026"
+    bucket         = "vina-terraform-waf-bucket"
     key            = "wafalb/"
     region         = "us-east-1"
   }
