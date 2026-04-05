@@ -46,8 +46,16 @@ pipeline {
             steps {
                 script {
                     echo "Validating permissions to assume role: ${params.ROLE_ARN}"
+                    def externalIdArg = params.EXTERNAL_ID ? "--external-id '${params.EXTERNAL_ID}'" : ""
                     def result = sh(
-                        script: "aws sts assume-role --role-arn '${params.ROLE_ARN}' --role-session-name jenkins-permission-check --query 'Credentials.AccessKeyId' --output text 2>&1",
+                        script: """
+                        aws sts assume-role \\
+                          --role-arn '${params.ROLE_ARN}' \\
+                          --role-session-name jenkins-permission-check \\
+                          ${externalIdArg} \\
+                          --query 'Credentials.AccessKeyId' \\
+                          --output text
+                        """,
                         returnStatus: true
                     )
                     if (result != 0) {
