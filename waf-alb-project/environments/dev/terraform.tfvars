@@ -13,7 +13,7 @@ region = "us-east-1"
 
 # Same-account — leave empty
 assume_role_arn         = ""
-assume_role_external_id = ""
+assume_role_external_id = "Rapyder@123"
 
 # WAF Lifecycle
 create_waf           = true
