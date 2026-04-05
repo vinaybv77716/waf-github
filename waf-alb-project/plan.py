@@ -328,25 +328,25 @@ def rules_from_variables(plan):
             "enabled": vars_.get("enable_rate_limiting", "N/A"),
         }
 
-    # IP Allowlist / Blocklist
-    if vars_.get("allowlist_ips"):
-        result["Allow-IPs"] = {
-            "priority": vars_.get("allowlist_priority", "N/A"),
-            "effective_action": "allow", "rule_action": "allow",
-            "override_action": None, "subrules": {},
-            "rate_limit": "N/A", "geo_countries": [],
-            "byte_strings": vars_.get("allowlist_ips", []),
-            "bot_inspect_level": "N/A", "enabled": True,
-        }
-    if vars_.get("blocklist_ips"):
-        result["Block-IP"] = {
-            "priority": vars_.get("blocklist_priority", "N/A"),
-            "effective_action": "block", "rule_action": "block",
-            "override_action": None, "subrules": {},
-            "rate_limit": "N/A", "geo_countries": [],
-            "byte_strings": vars_.get("blocklist_ips", []),
-            "bot_inspect_level": "N/A", "enabled": True,
-        }
+    # IP Allowlist / Blocklist — always include even if empty, so diffs are detected
+    result["Allow-IPs"] = {
+        "priority": vars_.get("allowlist_priority", "N/A"),
+        "effective_action": "allow", "rule_action": "allow",
+        "override_action": None, "subrules": {},
+        "rate_limit": "N/A", "geo_countries": [],
+        "byte_strings": vars_.get("allowlist_ips") or [],
+        "bot_inspect_level": "N/A",
+        "enabled": bool(vars_.get("allowlist_ips")),
+    }
+    result["Block-IP"] = {
+        "priority": vars_.get("blocklist_priority", "N/A"),
+        "effective_action": "block", "rule_action": "block",
+        "override_action": None, "subrules": {},
+        "rate_limit": "N/A", "geo_countries": [],
+        "byte_strings": vars_.get("blocklist_ips") or [],
+        "bot_inspect_level": "N/A",
+        "enabled": bool(vars_.get("blocklist_ips")),
+    }
 
     # Custom rules
     for enable_key, display_name, prio_key in CUSTOM_RULES:
@@ -699,13 +699,21 @@ def analyze_single(plan_path):
     print_custom_rules_detail(after_rules)
     print_subrules_full(before_rules, after_rules)
 
+    changes = diff_rules(before_rules, after_rules)
     if before_rules:
-        changes = diff_rules(before_rules, after_rules)
         print_diff_summary(changes)
     else:
-        print(section("NOTE"))
-        print("\n  No 'before' state in this file.")
-        print("  To diff two states run:")
+        print(section("CHANGE SUMMARY  (new deployment — no prior state)"))
+        if not changes:
+            print("\n  NO CHANGES DETECTED - Infrastructure is up to date.\n")
+        else:
+            rows = [
+                [c["rule"], c["sub_rule"], c["field"], c["before_val"], c["after_val"], c["status"]]
+                for c in changes
+            ]
+            print("\n  Note: No prior state — all entries below are planned additions.\n")
+            print(make_table(["RULE", "SUB-RULE", "FIELD", "BEFORE", "AFTER", "STATUS"], rows))
+        print("\n  To diff two states run:")
         print("    python3 plan.py old_plan.json new_plan.json\n")
 
 def analyze_two(before_path, after_path):
