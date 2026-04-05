@@ -13,7 +13,9 @@ A comprehensive Infrastructure as Code (IaC) solution for deploying and managing
 - [Configuration](#configuration)
 - [Deployment](#deployment)
 - [Creating a New WAF for a New Project](#creating-a-new-waf-for-a-new-project)
+- [Using an Existing Manually Created WAF](#using-an-existing-manually-created-waf)
 - [Cross-Account WAF Deployment](#cross-account-waf-deployment)
+- [plan.py — Plan Analyzer](#planpy--plan-analyzer)
 - [Jenkins Pipeline](#jenkins-pipeline)
 - [WAF Rules Reference](#waf-rules-reference)
 - [Troubleshooting](#troubleshooting)
@@ -422,14 +424,78 @@ The error `IAM Role cannot be assumed` occurs when `assume_role_arn` is set to a
 
 ---
 
+## Using an Existing Manually Created WAF
+
+If a WAF Web ACL was already created manually in the AWS Console, you can bring it under Terraform management for ALB association only — without recreating or modifying the WAF rules.
+
+Set these two fields in your tfvars:
+
+```hcl
+create_waf           = false
+existing_web_acl_arn = "arn:aws:wafv2:us-east-1:892669526097:regional/webacl/my-waf-name/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+associate_waf = true
+alb_arns      = ["arn:aws:elasticloadbalancing:us-east-1:892669526097:loadbalancer/app/my-alb/abc123"]
+```
+
+Get the ARN of the existing WAF:
+
+```bash
+aws wafv2 list-web-acls --scope REGIONAL --region us-east-1
+```
+
+When `create_waf = false`:
+- Terraform does NOT create, modify, or destroy the WAF Web ACL or its rules
+- Terraform ONLY manages the `aws_wafv2_web_acl_association` resource (ALB ↔ WAF link)
+- All rule variables (`enable_aws_managed_rules`, etc.) are ignored
+
+---
+
+## plan.py — Plan Analyzer
+
+`plan.py` reads the Terraform plan JSON and prints a clean ASCII table report to Jenkins console output.
+
+```bash
+python3 plan.py plan.json
+```
+
+### Report Sections
+
+| Section | What it shows |
+|---------|--------------|
+| Header | Project, environment, region, TF version, applyable |
+| ALB Associations & WAF ARN | WAF ARN before/after, ALB ARN changes |
+| IP Set Changes | CIDR additions/removals in `allowlist` and `blocklist` IP sets |
+| WAF Rule Overview | All rules sorted by priority with action, WCU, enabled status |
+| WCU Budget Summary | Per-rule WCU usage and total vs 1,500 limit |
+| Custom Rules Detail | IP lists, geo rules, URL/path rules with detail values |
+| AWS Managed Rule Sub-Rules | Per-sub-rule before/after action breakdown |
+| Change Summary | Count and detail of all detected changes |
+
+### IP Set Changes
+
+`aws_wafv2_ip_set` is a separate Terraform resource from the Web ACL. Changes to `allowlist_ips` or `blocklist_ips` in your tfvars update the IP set resource — not the WAF rule list. The `IP SET CHANGES` section specifically tracks these so they are never missed in the plan output.
+
+### Two-file diff mode
+
+```bash
+python3 plan.py old_plan.json new_plan.json
+```
+
+Compares two plan files and shows exactly what changed between them.
+
+---
+
 ## Jenkins Pipeline
 
 ### Pipeline Stages
 
 ```
-Validate Parameters → Terraform Init → Terraform Plan → Approval → Terraform Apply → Outputs
+Validate Parameters → Validate Cross-Account Permissions → Terraform Init → Terraform Plan → Approval → Terraform Apply → Outputs
 ```
 
+- `Validate Cross-Account Permissions` runs **only when `ROLE_ARN` is set** — skipped for same-account runs
+- It calls `aws sts assume-role` before any Terraform runs. If the role cannot be assumed, the pipeline fails immediately with: `Not enough permissions to assume (<role-arn>)`
 - Approval gate is skipped when `ACTION = plan`
 - Plan output is archived as a Jenkins artifact
 - `plan.py` generates a readable summary table after each plan
@@ -535,6 +601,10 @@ dev (count) → staging (block critical rules) → prod (all block)
 ---
 
 ## Troubleshooting
+
+### plan.py Shows No Changes for IP Set Updates
+
+`aws_wafv2_ip_set` is a separate resource from the Web ACL. Changes to `allowlist_ips` or `blocklist_ips` do not appear in the WAF rule diff — they appear in the dedicated `IP SET CHANGES` section of the plan output. If you don't see IP changes in the Change Summary, check the `IP SET CHANGES` section above it.
 
 ### Cannot assume IAM Role (cross-account)
 
