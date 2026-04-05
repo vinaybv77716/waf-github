@@ -450,8 +450,47 @@ def extract_metadata(plan):
     }
 
 # ─────────────────────────────────────────────────────────────
-# DIFF ENGINE
+# IP SET CHANGES  (aws_wafv2_ip_set is a separate resource)
 # ─────────────────────────────────────────────────────────────
+def extract_ip_set_changes(plan):
+    """Return list of dicts describing ip_set resource changes."""
+    changes = []
+    for ch in plan.get("resource_changes", []):
+        if ch.get("type") != "aws_wafv2_ip_set":
+            continue
+        actions = ch.get("change", {}).get("actions", [])
+        before  = ch.get("change", {}).get("before") or {}
+        after   = ch.get("change", {}).get("after")  or {}
+        name    = after.get("name") or before.get("name") or ch.get("name", "?")
+        b_addrs = sorted(before.get("addresses", []) or [])
+        a_addrs = sorted(after.get("addresses",  []) or [])
+        if "no-op" in actions and b_addrs == a_addrs:
+            continue
+        changes.append({
+            "name":    name,
+            "actions": actions,
+            "before":  b_addrs,
+            "after":   a_addrs,
+        })
+    return changes
+
+def print_ip_set_changes(ip_changes):
+    print(section("IP SET CHANGES  (aws_wafv2_ip_set)"))
+    if not ip_changes:
+        print("\n  No IP set changes detected.\n")
+        return
+    for entry in ip_changes:
+        print(subsection("{} — {}".format(entry["name"], ", ".join(entry["actions"]))))
+        b_set = set(entry["before"])
+        a_set = set(entry["after"])
+        added   = sorted(a_set - b_set)
+        removed = sorted(b_set - a_set)
+        kept    = sorted(b_set & a_set)
+        rows = []
+        for ip in added:   rows.append([ip, "---",    ip,  "ADDED"])
+        for ip in removed: rows.append([ip, ip,    "---",  "REMOVED"])
+        for ip in kept:    rows.append([ip, ip,      ip,   "NO CHANGE"])
+        print(make_table(["CIDR", "BEFORE", "AFTER", "STATUS"], rows))
 def priority_sort_key(name, before, after):
     r = (after or {}).get(name) or (before or {}).get(name) or {}
     p = r.get("priority", 999)
@@ -694,6 +733,7 @@ def analyze_single(plan_path):
     waf_arn = extract_waf_arn(plan)
 
     print_alb_section(albs, waf_arn)
+    print_ip_set_changes(extract_ip_set_changes(plan))
     print_rule_overview(before_rules, after_rules)
     print_wcu_summary(after_rules)
     print_custom_rules_detail(after_rules)
@@ -743,6 +783,7 @@ def analyze_two(before_path, after_path):
     }
 
     print_alb_section(combined_albs, waf_arn)
+    print_ip_set_changes(extract_ip_set_changes(after_plan))
     print_rule_overview(before_rules, after_rules)
     print_wcu_summary(after_rules)
     print_custom_rules_detail(after_rules)
