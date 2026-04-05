@@ -12,8 +12,8 @@ key    = "waf-alb/terraform.tfstate"
 region = "us-east-1"
 
 # Same-account — leave empty
-assume_role_arn         = ""
-assume_role_external_id = "Rapyder@123"
+assume_role_arn         = "arn:aws:iam::892669526097:role/ecr-ssm-role"
+assume_role_external_id = "Vinay!@#321"
 
 # WAF Lifecycle
 create_waf           = true
