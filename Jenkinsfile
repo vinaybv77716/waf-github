@@ -41,6 +41,24 @@ pipeline {
         }
 
         // ── Terraform Init ──────────────────────────────────────
+        stage('Validate Cross-Account Permissions') {
+            when { expression { params.ROLE_ARN?.trim() } }
+            steps {
+                script {
+                    echo "Validating permissions to assume role: ${params.ROLE_ARN}"
+                    def result = sh(
+                        script: "aws sts assume-role --role-arn '${params.ROLE_ARN}' --role-session-name jenkins-permission-check --query 'Credentials.AccessKeyId' --output text 2>&1",
+                        returnStatus: true
+                    )
+                    if (result != 0) {
+                        error("Not enough permissions to assume (${params.ROLE_ARN})")
+                    }
+                    echo "Permission check passed — role can be assumed."
+                }
+            }
+        }
+
+        // ── Terraform Init ──────────────────────────────────────
         stage('Terraform Init') {
             steps {
                 dir(env.WORKSPACE_DIR) {
